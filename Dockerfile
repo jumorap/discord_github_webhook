@@ -7,6 +7,10 @@ WORKDIR /app
 
 COPY . .
 
+ARG PORT
+
+ENV PORT=$PORT
+
 RUN pip install -r requirements.txt
 
 EXPOSE $PORT
