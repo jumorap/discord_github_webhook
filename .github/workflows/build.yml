@@ -1,0 +1,50 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-push-gcr:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_ID: fablab-385817
+      IMAGE_NAME: webhook_discord
+      INSTANCE_NAME: fablabvm
+      ZONE: us-central1-a
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Configure the Google Cloud CLI
+      - name: GCP Github Actions
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.SERVICE_ACCOUNT_KEY }}
+
+      # Build the Docker image with environment variables
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }}:latest \
+            --build-arg PORT=${{ secrets.PORT }} .
+      - name: Docker client config
+        run: gcloud auth configure-docker
+
+      # Push the Docker image to GCR
+      - name: Push Docker Image to GCR
+        run: |
+          docker tag ${{ env.IMAGE_NAME }}:latest gcr.io/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:latest
+          docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:latest
+      - name: Deploy to GCE
+        uses: 'google-github-actions/ssh-compute@v0'
+        with:
+          instance_name: '${{ env.INSTANCE_NAME }}'
+          zone: '${{ env.ZONE }}'
+          ssh_private_key: '${{ secrets.GCP_SSH_PRIVATE_KEY }}'
+          command: |
+            sudo docker stop ${{ env.IMAGE_NAME }}
+            sudo docker rm ${{ env.IMAGE_NAME }}
+            sudo docker pull gcr.io/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:latest
+            sudo docker run -d --name ${{ env.IMAGE_NAME }} -p ${{ secrets.PORT }}:${{ secrets.PORT }} gcr.io/${{ env.PROJECT_ID }}/${{ env.IMAGE_NAME }}:latest
